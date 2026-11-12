@@ -1,0 +1,25 @@
+{
+  "name": "SAIL Meeting Translator",
+  "image": "mcr.microsoft.com/devcontainers/universal:2",
+  "features": {},
+  "forwardPorts": [8000, 5173],
+  "portsAttributes": {
+    "8000": {
+      "label": "FastAPI Backend",
+      "onAutoForward": "notify"
+    },
+    "5173": {
+      "label": "Vite Frontend",
+      "onAutoForward": "openBrowser"
+    }
+  },
+  "postCreateCommand": "sudo apt-get update && sudo apt-get install -y ffmpeg libsndfile1 portaudio19-dev python3.12-venv && python3.12 -m venv /workspaces/venv && /workspaces/venv/bin/pip install --upgrade pip && /workspaces/venv/bin/pip install -r backend/requirements.txt && /workspaces/venv/bin/python backend/download_voices.py && cd frontend && npm install",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance"
+      ]
+    }
+  }
+}
