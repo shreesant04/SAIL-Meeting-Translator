@@ -26,7 +26,6 @@ function formatTime(seconds) {
 
 function App() {
   const [status, setStatus] = useState("Ready");
-  const [backendStatus, setBackendStatus] = useState("Checking...");
   const [audioFile, setAudioFile] = useState(null);
   // One row = what was said + its English meaning
   const [rows, setRows] = useState([]);
@@ -45,6 +44,11 @@ function App() {
   const [recordEnabled, setRecordEnabled] = useState(false);
   const [recordingUrl, setRecordingUrl] = useState("");
   const [recordingName, setRecordingName] = useState("");
+  const [filesOpen, setFilesOpen] = useState(false);
+
+  // The SAIL logo is loaded from frontend/public/sail-logo.png.
+  // If that file is missing, the letter "S" is shown instead.
+  const [logoOk, setLogoOk] = useState(true);
 
   // Talkback: read the English sentences aloud (voices on this PC only)
   const [talkback, setTalkback] = useState(false);
@@ -90,27 +94,9 @@ function App() {
     }
   }, [rows]);
 
+  // Release the microphone/screen capture if the page is closed
   useEffect(() => {
-    let mounted = true;
-
-    const checkBackend = async () => {
-      try {
-        const response = await fetch(`${API}/health`);
-
-        if (!response.ok) throw new Error();
-
-        if (mounted) setBackendStatus("Connected");
-      } catch {
-        if (mounted) setBackendStatus("Disconnected");
-      }
-    };
-
-    checkBackend();
-    const timer = setInterval(checkBackend, 5000);
-
     return () => {
-      mounted = false;
-      clearInterval(timer);
       cleanupAudio();
     };
   }, []);
@@ -179,6 +165,7 @@ function App() {
 
         setRecordingUrl(url);
         setRecordingName(name);
+        setFilesOpen(true);
       };
 
       recorder.start(1000);
@@ -842,40 +829,33 @@ function App() {
     <div className="app">
       <header className="header">
         <div className="brand">
-          <div className="brand-logo">S</div>
-          <div>
-            <h2>SAIL Meeting Translator</h2>
-            <p>Internal Meeting Assistance System</p>
-          </div>
+          {logoOk ? (
+            <img
+              className="brand-logo-img"
+              src="/sail-logo.png"
+              alt="SAIL"
+              onError={() => setLogoOk(false)}
+            />
+          ) : (
+            <div className="brand-logo">S</div>
+          )}
+          <h2>SAIL-ISP</h2>
         </div>
 
-        <div className="connection">
-          <span className="status-dot"></span>
-          Backend: {backendStatus}
+        <div className="header-status">
+          <span className={isLive ? "live-dot on" : "live-dot"}></span>
+          <strong>{isLive ? "LIVE" : "READY"}</strong>
         </div>
       </header>
 
-      <main className="main">
-        <section className="welcome">
-          <span className="eyebrow">MEETING WORKSPACE</span>
-          <h1>Understand every meeting.</h1>
-          <p>
-            Translate meeting speech into English using locally
-            processed speech recognition.
-          </p>
-        </section>
+      <main className="workspace">
+        {/* ---------- LEFT: menu ---------- */}
+        <aside className="sidebar">
+          <section className="panel">
+            <h3>Live meeting</h3>
 
-        <section className="controls card">
-          <h3>Meeting controls</h3>
-          <p className="muted">
-            Supported languages: Hindi, Bengali and Korean. Pick the
-            spoken language for the best accuracy, or use Auto-detect
-            if you are not sure.
-          </p>
-
-          <div className="option-row">
-            <label>
-              Spoken language{" "}
+            <label className="field">
+              <span>Spoken language</span>
               <select
                 value={sourceLanguage}
                 disabled={isLive || loading}
@@ -889,69 +869,55 @@ function App() {
               </select>
             </label>
 
-            <label>
-              Recorded audio{" "}
-              <select
-                value={fileAccuracy}
-                disabled={isLive || loading}
-                onChange={event => setFileAccuracy(event.target.value)}
+            <div className="button-row">
+              <button
+                className="start-button"
+                onClick={startLiveTranslation}
+                disabled={isLive || loading || startingRef.current}
               >
-                <option value="best">Best accuracy (slower)</option>
-                <option value="fast">Fast</option>
-              </select>
+                {isLive ? "Listening..." : "Start Live Translation"}
+              </button>
+
+              <button
+                className="stop-button"
+                onClick={stopTranslation}
+                disabled={!isLive && !loading && !startingRef.current}
+              >
+                Stop
+              </button>
+            </div>
+
+            <p className="status-line">
+              {status}
+              {loading && (
+                <span>
+                  {" "}
+                  ({formatTime(elapsed)}
+                  {progress > 0 ? ` · ${progress}%` : ""})
+                </span>
+              )}
+            </p>
+
+            {error && <p className="error-line">{error}</p>}
+          </section>
+
+          <section className="panel">
+            <h3>Options</h3>
+
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={recordEnabled}
+                disabled={isLive}
+                onChange={event => {
+                  setRecordEnabled(event.target.checked);
+                  recordEnabledRef.current = event.target.checked;
+                }}
+              />
+              Record meeting audio (saved on this computer only)
             </label>
-          </div>
 
-          <div className="control-row">
-            <input
-              type="file"
-              accept="audio/*"
-              onChange={event => {
-                setAudioFile(event.target.files[0] || null);
-                setError("");
-              }}
-            />
-
-            <button
-              className="start-button"
-              onClick={startFileTranslation}
-              disabled={loading || isLive}
-            >
-              {loading ? "Translating..." : "Translate File"}
-            </button>
-
-            <button
-              className="start-button"
-              onClick={startLiveTranslation}
-              disabled={isLive || loading || startingRef.current}
-            >
-              {isLive ? "Listening..." : "Start Live Translation"}
-            </button>
-
-            <button
-              className="stop-button"
-              onClick={stopTranslation}
-              disabled={!isLive && !loading && !startingRef.current}
-            >
-              Stop
-            </button>
-          </div>
-
-          <label className="record-option">
-            <input
-              type="checkbox"
-              checked={recordEnabled}
-              disabled={isLive}
-              onChange={event => {
-                setRecordEnabled(event.target.checked);
-                recordEnabledRef.current = event.target.checked;
-              }}
-            />{" "}
-            Also record meeting audio (saved on this computer only)
-          </label>
-
-          <div className="talkback-box">
-            <label className="record-option">
+            <label className="check">
               <input
                 type="checkbox"
                 checked={talkback}
@@ -976,8 +942,8 @@ function App() {
                       .catch(() => {});
                   }
                 }}
-              />{" "}
-              Read the English translation aloud (talkback)
+              />
+              Read the English aloud (talkback)
             </label>
 
             {talkback && (
@@ -997,7 +963,7 @@ function App() {
                 )}
 
                 {voiceEngine === "windows" && voices.length === 0 ? (
-                  <p className="status-text">
+                  <p className="hint">
                     No offline English voice found. In Windows: Settings,
                     Time and language, Speech, Add voices.
                   </p>
@@ -1019,203 +985,193 @@ function App() {
                       </select>
                     )}
 
-                    <input
-                      type="range"
-                      min="0.2"
-                      max="1"
-                      step="0.1"
-                      value={talkbackVolume}
-                      title="Talkback volume"
-                      onChange={event => {
-                        const value = Number(event.target.value);
-                        setTalkbackVolume(value);
-                        talkbackVolumeRef.current = value;
-                      }}
-                    />
+                    <div className="talkback-row">
+                      <input
+                        type="range"
+                        min="0.2"
+                        max="1"
+                        step="0.1"
+                        value={talkbackVolume}
+                        title="Talkback volume"
+                        onChange={event => {
+                          const value = Number(event.target.value);
+                          setTalkbackVolume(value);
+                          talkbackVolumeRef.current = value;
+                        }}
+                      />
 
-                    <button
-                      type="button"
-                      onClick={() => {
-                        stopSpeaking();
-                        speakEnglish("This is the translation voice test.");
-                      }}
-                    >
-                      Test voice
-                    </button>
+                      <button
+                        type="button"
+                        className="small-button"
+                        onClick={() => {
+                          stopSpeaking();
+                          speakEnglish("This is the translation voice test.");
+                        }}
+                      >
+                        Test voice
+                      </button>
+                    </div>
                   </>
                 )}
 
-                <p className="status-text">
-                  Use headphones, or share only the meeting tab. If the
-                  translator hears its own voice, it will translate it again.
+                <p className="hint">
+                  Share only the meeting tab, or use headphones, so the
+                  translator does not hear its own voice.
                 </p>
+              </div>
+            )}
+          </section>
+
+          <details
+            className="panel"
+            open={filesOpen}
+            onToggle={event => setFilesOpen(event.currentTarget.open)}
+          >
+            <summary>Recorded audio</summary>
+
+            <label className="field">
+              <span>Accuracy</span>
+              <select
+                value={fileAccuracy}
+                disabled={isLive || loading}
+                onChange={event => setFileAccuracy(event.target.value)}
+              >
+                <option value="best">Best accuracy (slower)</option>
+                <option value="fast">Fast</option>
+              </select>
+            </label>
+
+            <input
+              className="file-input"
+              type="file"
+              accept="audio/*"
+              onChange={event => {
+                setAudioFile(event.target.files[0] || null);
+                setError("");
+              }}
+            />
+
+            <button
+              className="start-button wide"
+              onClick={startFileTranslation}
+              disabled={loading || isLive || !audioFile}
+            >
+              {loading ? "Translating..." : "Translate File"}
+            </button>
+
+            {recordingUrl && (
+              <div className="recording-box">
+                <p className="hint">
+                  Recording saved: <strong>{recordingName}</strong>
+                </p>
+                <audio controls src={recordingUrl}></audio>
+                <div className="button-row">
+                  <a
+                    className="download-link"
+                    href={recordingUrl}
+                    download={recordingName}
+                  >
+                    Download
+                  </a>
+                  <button
+                    className="small-button"
+                    onClick={translateRecording}
+                    disabled={loading || isLive}
+                  >
+                    {loading ? "Translating..." : "Translate this recording"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </details>
+        </aside>
+
+        {/* ---------- RIGHT: subtitles and conversation ---------- */}
+        <section className="stage">
+          <div className="subtitle-card">
+            <div className="subtitle-head">
+              <span className="muted">
+                Detected language:{" "}
+                <strong>
+                  {detectedLanguage || "Waiting for speech..."}
+                </strong>
+              </span>
+            </div>
+
+            <div className="subtitle-english">
+              {latestEnglish
+                ? latestEnglish.english
+                : isLive
+                ? "Listening... speak now"
+                : "English subtitles will appear here"}
+            </div>
+
+            {latestEnglish && latestEnglish.original && (
+              <div className="subtitle-original">
+                {latestEnglish.original}
+                {latestEnglish.roman && (
+                  <span className="subtitle-roman">
+                    {" "}
+                    · {latestEnglish.roman}
+                  </span>
+                )}
               </div>
             )}
           </div>
 
-          {recordingUrl && (
-            <div className="recording-box">
-              <p className="status-text">
-                Recording saved: <strong>{recordingName}</strong>
-              </p>
-              <audio controls src={recordingUrl}></audio>
-              <p>
-                <a
-                  className="download-link"
-                  href={recordingUrl}
-                  download={recordingName}
-                >
-                  Download recording
-                </a>
-              </p>
-              <button
-                className="start-button"
-                onClick={translateRecording}
-                disabled={loading || isLive}
-              >
-                {loading
-                  ? "Translating..."
-                  : "Translate this recording"}
-              </button>
-            </div>
-          )}
-
-          {audioFile && (
-            <p className="status-text">
-              Selected file: <strong>{audioFile.name}</strong>
-            </p>
-          )}
-
-          <p className="status-text">
-            Current status: <strong>{status}</strong>
-            {loading && (
-              <span>
-                {" "}
-                ({formatTime(elapsed)}
-                {progress > 0 ? ` · ${progress}%` : ""})
+          <div className="conversation">
+            <div className="conversation-top">
+              <h3>Conversation</h3>
+              <span className="live-label">
+                {rows.length} {rows.length === 1 ? "LINE" : "LINES"}
               </span>
-            )}
-          </p>
+            </div>
 
-          {error && (
-            <p className="status-text">{error}</p>
-          )}
-        </section>
+            <div className="conversation-head">
+              <span>Original</span>
+              <span>English</span>
+            </div>
 
-        <section className="subtitle-card card">
-          <div className="subtitle-head">
-            <span className={isLive ? "live-dot on" : "live-dot"}></span>
-            <strong>{isLive ? "LIVE" : "READY"}</strong>
-            <span className="muted">
-              Detected language:{" "}
-              <strong>
-                {detectedLanguage || "Waiting for speech..."}
-              </strong>
-            </span>
-          </div>
-
-          <div className="subtitle-english">
-            {latestEnglish
-              ? latestEnglish.english
-              : isLive
-              ? "Listening... speak now"
-              : "English subtitles will appear here"}
-          </div>
-
-          {latestEnglish && latestEnglish.original && (
-            <div className="subtitle-original">
-              {latestEnglish.original}
-              {latestEnglish.roman && (
-                <div className="subtitle-roman">
-                  {latestEnglish.roman}
+            <div className="conversation-body" ref={conversationRef}>
+              {rows.length === 0 ? (
+                <div className="conversation-empty">
+                  <div className="empty-icon">Aa</div>
+                  <p>
+                    The original speech shows first, and the English
+                    follows a moment later on the same row.
+                  </p>
                 </div>
+              ) : (
+                rows.map((row, index) => (
+                  <div
+                    className="conversation-row"
+                    key={row.id ?? index}
+                  >
+                    <div className="cell original-cell">
+                      <span className="time">
+                        {formatTime(row.start)}
+                      </span>
+                      <span>{row.original || "—"}</span>
+                      {row.roman && (
+                        <div className="roman-line">{row.roman}</div>
+                      )}
+                    </div>
+
+                    <div className="cell english-cell">
+                      {row.english === null ? (
+                        <span className="pending">
+                          Translating<span className="dots"></span>
+                        </span>
+                      ) : (
+                        row.english || "—"
+                      )}
+                    </div>
+                  </div>
+                ))
               )}
             </div>
-          )}
-        </section>
-
-        <section className="conversation card">
-          <div className="section-heading">
-            <div>
-              <h3>Conversation</h3>
-              <p className="muted">
-                Each row shows what was said and its English meaning
-              </p>
-            </div>
-            <span className="live-label">
-              ● {rows.length} {rows.length === 1 ? "LINE" : "LINES"}
-            </span>
-          </div>
-
-          <div className="conversation-head">
-            <span>Original</span>
-            <span>English</span>
-          </div>
-
-          <div className="conversation-body" ref={conversationRef}>
-            {rows.length === 0 ? (
-              <div className="conversation-empty">
-                <div className="empty-icon">Aa</div>
-                <h4>The conversation will appear here</h4>
-                <p>
-                  The original speech shows first, and the English
-                  follows a moment later on the same row.
-                </p>
-              </div>
-            ) : (
-              rows.map((row, index) => (
-                <div
-                  className="conversation-row"
-                  key={row.id ?? index}
-                >
-                  <div className="cell original-cell">
-                    <span className="time">
-                      {formatTime(row.start)}
-                    </span>
-                    <span>{row.original || "—"}</span>
-                    {row.roman && (
-                      <div className="roman-line">{row.roman}</div>
-                    )}
-                  </div>
-
-                  <div className="cell english-cell">
-                    {row.english === null ? (
-                      <span className="pending">
-                        Translating<span className="dots"></span>
-                      </span>
-                    ) : (
-                      row.english || "—"
-                    )}
-                  </div>
-                </div>
-              ))
-            )}
           </div>
         </section>
-
-        <section className="features">
-          <div className="feature card">
-            <span className="feature-icon">01</span>
-            <h3>Local processing</h3>
-            <p>Designed for approved internal infrastructure.</p>
-          </div>
-
-          <div className="feature card">
-            <span className="feature-icon">02</span>
-            <h3>Multilingual translation</h3>
-            <p>Hindi, Bengali and Korean.</p>
-          </div>
-
-          <div className="feature card">
-            <span className="feature-icon">03</span>
-            <h3>Meeting transcript</h3>
-            <p>Display recognised speech alongside English translation.</p>
-          </div>
-        </section>
-
-        <footer>
-          SAIL Meeting Translator · Development Prototype
-        </footer>
       </main>
     </div>
   );
